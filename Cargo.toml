@@ -1,0 +1,16 @@
+[package]
+name = "vk_fps"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vulkano = "0.30"
+vulkano-win = "0.30"
+vulkano-util = "0.30"
+vulkano-shaders = "0.30"
+winit = "0.26"
+cgmath = "0.18"
+
+[dependencies.bytemuck]
+version = "1.12"
+features = ["derive"]
