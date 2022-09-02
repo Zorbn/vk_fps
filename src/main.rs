@@ -19,7 +19,7 @@ use vulkano::{
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
-            rasterization::{RasterizationState, FrontFace},
+            rasterization::{FrontFace, RasterizationState},
             render_pass::PipelineRenderingCreateInfo,
             vertex_input::BuffersDefinition,
             viewport::{Viewport, ViewportState},
@@ -35,10 +35,15 @@ use vulkano::{
 };
 use vulkano_win::VkSurfaceBuild;
 use winit::{
-    event::{Event, WindowEvent},
+    event::{DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, WindowEvent, VirtualKeyCode},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+
+// TODO:
+// Reduce imports,
+// Don't accept mouse input unless mouse is locked,
+// Make mouse locking/unlocking a function that takes a bool,
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
@@ -210,9 +215,7 @@ fn main() {
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .fragment_shader(fs.entry_point("main").unwrap(), ())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .rasterization_state(
-            RasterizationState::new().front_face(FrontFace::Clockwise),
-        )
+        .rasterization_state(RasterizationState::new().front_face(FrontFace::Clockwise))
         .build(device.clone())
         .unwrap();
 
@@ -224,8 +227,6 @@ fn main() {
         target: cgmath::Vector3::new(0.0, 0.0, 0.0),
         up: cgmath::Vector3::new(0.0, 1.0, 0.0),
     };
-    camera.rotate_y(cgmath::Deg(40.0));
-    camera.rotate_x(cgmath::Deg(-25.0));
 
     let mut viewport = Viewport {
         origin: [0.0, 0.0],
@@ -252,6 +253,45 @@ fn main() {
         } => {
             recreate_swapchain = true;
         }
+        Event::WindowEvent {
+            event:
+                WindowEvent::KeyboardInput {
+                    input:
+                        KeyboardInput {
+                            state,
+                            virtual_keycode: Some(key),
+                            ..
+                        },
+                    ..
+                },
+            ..
+        } => match key {
+            VirtualKeyCode::Escape => {
+                if state == ElementState::Pressed {
+                    let _ = surface.window().set_cursor_grab(false);
+                    _ = surface.window().set_cursor_visible(true);
+                }
+            }
+            _ => (),
+        },
+        Event::WindowEvent {
+            event:
+                WindowEvent::MouseInput { button, .. },
+                ..
+        } => match button {
+            MouseButton::Left => {
+                let _ = surface.window().set_cursor_grab(true);
+                _ = surface.window().set_cursor_visible(false);
+            }
+            _ => ()
+        }
+        Event::DeviceEvent { event, .. } => match event {
+            DeviceEvent::MouseMotion { delta } => {
+                camera.rotate_y(cgmath::Deg(delta.0 as f32));
+                camera.rotate_x(-cgmath::Deg(delta.1 as f32));
+            }
+            _ => (),
+        },
         Event::RedrawEventsCleared => {
             previous_frame_end.as_mut().unwrap().cleanup_finished();
 
