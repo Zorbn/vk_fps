@@ -30,4 +30,27 @@ impl Camera {
 
         proj * view
     }
+
+    pub fn rotate_y(&mut self, delta: cgmath::Deg<f32>) {
+        self.rotate_on_axis(0, 2, delta);
+    }
+
+    pub fn rotate_x(&mut self, delta: cgmath::Deg<f32>) {
+        self.rotate_on_axis(1, 2, delta);
+    }
+
+    fn rotate_on_axis(&mut self, h_axis: usize, v_axis: usize, delta: cgmath::Deg<f32>) {
+        let delta_rad = cgmath::Rad::from(-delta);
+        let sin = delta_rad.sin();
+        let cos = delta_rad.cos();
+
+        self.target[h_axis] -= self.pos[h_axis];
+        self.target[v_axis] -= self.pos[v_axis];
+
+        let h_new = self.target[h_axis] * cos - self.target[v_axis] * sin;
+        let v_new = self.target[h_axis] * sin + self.target[v_axis] * cos;
+
+        self.target[h_axis] = h_new + self.pos[h_axis];
+        self.target[v_axis] = v_new + self.pos[v_axis];
+    }
 }

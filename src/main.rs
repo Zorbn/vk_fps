@@ -19,7 +19,7 @@ use vulkano::{
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
-            rasterization::{CullMode, RasterizationState},
+            rasterization::{RasterizationState, FrontFace},
             render_pass::PipelineRenderingCreateInfo,
             vertex_input::BuffersDefinition,
             viewport::{Viewport, ViewportState},
@@ -149,13 +149,13 @@ fn main() {
 
     let vertices = [
         Vertex {
-            position: [-0.5, 0.25],
+            position: [-0.5, 0.0],
         },
         Vertex {
             position: [0.0, 0.5],
         },
         Vertex {
-            position: [0.25, -0.1],
+            position: [0.5, 0.0],
         },
     ];
     let vertex_buffer =
@@ -167,7 +167,6 @@ fn main() {
     let instances = {
         let rows = 10;
         let cols = 10;
-        let n_instances = rows * cols;
         let mut data = Vec::new();
 
         for c in 0..cols {
@@ -179,7 +178,7 @@ fn main() {
                 let y = half_cell_h + (r as f32 / cols as f32) * 2.0 - 1.0;
 
                 let position_offset = [x, y];
-                let scale = (2.0 / rows as f32) * (c * rows + r) as f32 / n_instances as f32;
+                let scale = 0.5;
 
                 data.push(InstanceData {
                     position_offset,
@@ -212,19 +211,21 @@ fn main() {
         .fragment_shader(fs.entry_point("main").unwrap(), ())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         .rasterization_state(
-            RasterizationState::new().cull_mode(CullMode::Front),
+            RasterizationState::new().front_face(FrontFace::Clockwise),
         )
         .build(device.clone())
         .unwrap();
 
-    let camera = camera::Camera {
+    let mut camera = camera::Camera {
         fov_y: 45.0,
         z_near: 0.1,
         z_far: 100.0,
-        pos: cgmath::Vector3::new(5.0, 5.0, -5.0),
+        pos: cgmath::Vector3::new(0.0, 0.0, -2.0),
         target: cgmath::Vector3::new(0.0, 0.0, 0.0),
         up: cgmath::Vector3::new(0.0, 1.0, 0.0),
     };
+    camera.rotate_y(cgmath::Deg(40.0));
+    camera.rotate_x(cgmath::Deg(-25.0));
 
     let mut viewport = Viewport {
         origin: [0.0, 0.0],
