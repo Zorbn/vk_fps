@@ -30,12 +30,14 @@ use vulkano::{
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
     },
-    sync::{self, FlushError, GpuFuture},
+    sync::{self, FlushError, GpuFuture, FenceSignalFuture},
     Version,
 };
 use vulkano_win::VkSurfaceBuild;
 use winit::{
-    event::{DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, WindowEvent, VirtualKeyCode},
+    event::{
+        DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent,
+    },
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
@@ -139,6 +141,7 @@ fn main() {
                 image_format,
                 image_extent: surface.window().inner_size().into(),
                 image_usage: ImageUsage::color_attachment(),
+                present_mode: vulkano::swapchain::PresentMode::Immediate,
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
                     .iter()
@@ -236,7 +239,9 @@ fn main() {
 
     let mut recreate_swapchain = false;
 
-    let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
+    let frames_in_flight = images.len();
+    let mut fences: Vec<Option<Arc<FenceSignalFuture<_>>>> = vec![None; frames_in_flight];
+    let mut previous_fence_num = 0;
 
     let mut is_focused = false;
 
@@ -274,27 +279,24 @@ fn main() {
             _ => (),
         },
         Event::WindowEvent {
-            event:
-                WindowEvent::MouseInput { button, .. },
-                ..
+            event: WindowEvent::MouseInput { button, .. },
+            ..
         } => match button {
             MouseButton::Left => {
                 is_focused = set_locked_cursor(surface.window(), true);
             }
-            _ => ()
-        }
+            _ => (),
+        },
         Event::DeviceEvent { event, .. } => match event {
             DeviceEvent::MouseMotion { delta } => {
                 if is_focused {
-                    camera.rotate_y(cgmath::Deg(delta.0 as f32));
-                    camera.rotate_x(-cgmath::Deg(delta.1 as f32));
+                    camera.rotate_y(cgmath::Deg(delta.0 as f32 / 5.0));
+                    camera.rotate_x(-cgmath::Deg(delta.1 as f32 / 5.0));
                 }
             }
             _ => (),
         },
         Event::RedrawEventsCleared => {
-            previous_frame_end.as_mut().unwrap().cleanup_finished();
-
             if recreate_swapchain {
                 let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
                     image_extent: surface.window().inner_size().into(),
@@ -382,28 +384,40 @@ fn main() {
 
             let command_buffer = builder.build().unwrap();
 
-            let future = previous_frame_end
-                .take()
-                .unwrap()
+            if let Some(image_fence) = &fences[image_num] {
+                image_fence.wait(None).unwrap();
+            }
+
+            let previous_future = match fences[previous_fence_num].clone() {
+                None => {
+                    let mut now = sync::now(device.clone());
+                    now.cleanup_finished();
+
+                    now.boxed()
+                }
+                Some(fence) => fence.boxed(),
+            };
+
+            let future = previous_future
                 .join(acquire_future)
                 .then_execute(queue.clone(), command_buffer)
                 .unwrap()
                 .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
                 .then_signal_fence_and_flush();
 
-            match future {
-                Ok(future) => {
-                    previous_frame_end = Some(future.boxed());
-                }
+            fences[image_num] = match future {
+                Ok(value) => Some(Arc::new(value)),
                 Err(FlushError::OutOfDate) => {
                     recreate_swapchain = true;
-                    previous_frame_end = Some(sync::now(device.clone()).boxed());
+                    None
                 }
                 Err(e) => {
                     println!("Failed to flush future: {:?}", e);
-                    previous_frame_end = Some(sync::now(device.clone()).boxed());
+                    None
                 }
-            }
+            };
+
+            previous_fence_num = image_num;
         }
         _ => (),
     });
