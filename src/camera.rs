@@ -31,6 +31,39 @@ impl Camera {
         proj * view
     }
 
+    pub fn move_forward(&mut self, delta: f32, flatten: bool) {
+        let forward = (self.target - self.pos).normalize();
+        let delta_vec = {
+            let mut vec = forward * delta;
+
+            if flatten {
+                vec.y = 0.0;
+            }
+
+            vec
+        };
+
+        self.pos += delta_vec;
+        self.target += delta_vec;
+    }
+
+    pub fn move_right(&mut self, delta: f32, flatten: bool) {
+        let forward = (self.target - self.pos).normalize();
+        let right = cgmath::Vector3::new(forward.z, forward.y, -forward.x);
+        let delta_vec = {
+            let mut vec = right * delta;
+
+            if flatten {
+                vec.y = 0.0;
+            }
+
+            vec
+        };
+
+        self.pos += delta_vec;
+        self.target += delta_vec;
+    }
+
     pub fn rotate_y(&mut self, delta: cgmath::Deg<f32>) {
         self.rotate_on_axis(0, 2, delta);
     }

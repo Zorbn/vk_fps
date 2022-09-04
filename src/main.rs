@@ -1,4 +1,6 @@
 mod camera;
+mod state;
+mod input;
 
 use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
@@ -35,8 +37,9 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+use cgmath::prelude::*;
 
-use crate::camera::Camera;
+use crate::{camera::Camera, input::Input, state::State};
 
 // TODO:
 // Reduce imports.
@@ -128,6 +131,7 @@ fn main() {
                 image_format,
                 image_extent: surface.window().inner_size().into(),
                 image_usage: ImageUsage::color_attachment(),
+                // present_mode: PresentMode::Immediate,
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
                     .iter()
@@ -152,6 +156,21 @@ fn main() {
     ];
     let vertex_buffer = {
         CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices).unwrap()
+    };
+
+    let vertices_2 = [
+        Vertex {
+            position: [-0.5, 0.0, 0.0],
+        },
+        Vertex {
+            position: [0.0, 0.0, -0.5],
+        },
+        Vertex {
+            position: [0.5, 0.0, 0.0],
+        },
+    ];
+    let vertex_buffer_2 = {
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices_2).unwrap()
     };
 
     let uniform_buffer = CpuBufferPool::<vs::ty::Data>::new(device.clone(), BufferUsage::all());
@@ -244,6 +263,10 @@ fn main() {
         up: cgmath::Vector3::unit_y(),
     };
 
+    let mut state = State {
+        input_handler: Input::new(),
+    };
+
     let mut is_focused = false;
 
     let mut viewport = Viewport {
@@ -260,47 +283,23 @@ fn main() {
 
     event_loop.run(move |event, _, control_flow| {
         match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                *control_flow = ControlFlow::Exit;
-            }
-            Event::WindowEvent {
-                event: WindowEvent::Resized(_),
-                ..
-            } => {
-                recreate_swapchain = true;
-            }
-            Event::WindowEvent {
-                event:
-                    WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
-                                state,
-                                virtual_keycode: Some(key),
-                                ..
-                            },
-                        ..
+            Event::WindowEvent { ref event, .. } => {
+                state.input(event);
+
+                match event {
+                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                    WindowEvent::Resized(_) => recreate_swapchain = true,
+                    WindowEvent::MouseInput {
+                        button, .. 
+                    } => match button {
+                        MouseButton::Left => {
+                            is_focused = set_locked_cursor(surface.window(), true);
+                        }
+                        _ => (),
                     },
-                ..
-            } => match key {
-                VirtualKeyCode::Escape => {
-                    if state == ElementState::Pressed {
-                        is_focused = set_locked_cursor(surface.window(), false);
-                    }
+                    _ => (),
                 }
-                _ => (),
-            },
-            Event::WindowEvent {
-                event: WindowEvent::MouseInput { button, .. },
-                ..
-            } => match button {
-                MouseButton::Left => {
-                    is_focused = set_locked_cursor(surface.window(), true);
-                }
-                _ => (),
-            },
+            }
             Event::DeviceEvent { event, .. } => match event {
                 DeviceEvent::MouseMotion { delta } => {
                     if is_focused {
@@ -311,6 +310,40 @@ fn main() {
                 _ => (),
             },
             Event::RedrawEventsCleared => {
+                // Update:
+                if state.input_handler.was_key_pressed(VirtualKeyCode::Escape) {
+                    is_focused = set_locked_cursor(surface.window(), false);
+                }
+
+                let mut forward_dir = 0.0;
+                let mut right_dir = 0.0;
+
+                if state.input_handler.is_key_held(VirtualKeyCode::W) {
+                    forward_dir += 1.0;
+                }
+
+                if state.input_handler.is_key_held(VirtualKeyCode::S) {
+                    forward_dir -= 1.0;
+                }
+
+                if state.input_handler.is_key_held(VirtualKeyCode::D) {
+                    right_dir += 1.0;
+                }
+
+                if state.input_handler.is_key_held(VirtualKeyCode::A) {
+                    right_dir -= 1.0;
+                }
+
+                if right_dir != 0.0 || forward_dir != 0.0 {
+                    let vec_dir = cgmath::Vector2::new(right_dir, forward_dir).normalize();
+
+                    camera.move_right(vec_dir.x * 0.01, true);
+                    camera.move_forward(vec_dir.y * 0.01, true);
+                }
+
+                state.input_handler.update();
+
+                // Draw:
                 let dimensions = surface.window().inner_size();
                 if dimensions.width == 0 || dimensions.height == 0 {
                     return;
@@ -398,6 +431,15 @@ fn main() {
                         set.clone(),
                     )
                     .bind_vertex_buffers(0, (vertex_buffer.clone(), instance_buffer.clone()))
+                    .draw(
+                        vertex_buffer.len() as u32,
+                        instance_buffer.len() as u32,
+                        0,
+                        0,
+                    )
+                    .unwrap()
+                    // Test 2nd draw call.
+                    .bind_vertex_buffers(0, (vertex_buffer_2.clone(), instance_buffer.clone()))
                     .draw(
                         vertex_buffer.len() as u32,
                         instance_buffer.len() as u32,
