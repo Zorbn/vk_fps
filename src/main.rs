@@ -1,6 +1,8 @@
 mod camera;
 mod state;
 mod input;
+mod rect;
+mod ray;
 
 use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
@@ -20,7 +22,7 @@ use vulkano::{
         graphics::{
             input_assembly::InputAssemblyState,
             vertex_input::BuffersDefinition,
-            viewport::{Viewport, ViewportState}, rasterization::{RasterizationState, FrontFace}, depth_stencil::DepthStencilState,
+            viewport::{Viewport, ViewportState}, rasterization::{RasterizationState, FrontFace, CullMode}, depth_stencil::DepthStencilState,
         },
         GraphicsPipeline, PipelineBindPoint, Pipeline,
     },
@@ -39,10 +41,11 @@ use winit::{
 };
 use cgmath::prelude::*;
 
-use crate::{camera::Camera, input::Input, state::State};
+use crate::{camera::Camera, input::Input, state::State, rect::Rect, ray::Ray};
 
 // TODO:
 // Reduce imports.
+// Combine camera, etc into player struct.
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
@@ -144,14 +147,62 @@ fn main() {
     };
 
     let vertices = [
+        // Forward face
         Vertex {
-            position: [-0.5, 0.0, 0.0],
+            position: [-0.5, -0.5, -0.5],
         },
         Vertex {
-            position: [0.0, 0.5, 0.0],
+            position: [0.5, 0.5, -0.5],
         },
         Vertex {
-            position: [0.5, 0.0, 0.0],
+            position: [0.5, -0.5, -0.5],
+        },
+        Vertex {
+            position: [-0.5, -0.5, -0.5],
+        },
+        Vertex {
+            position: [-0.5, 0.5, -0.5],
+        },
+        Vertex {
+            position: [0.5, 0.5, -0.5],
+        },
+        // Left face
+        Vertex {
+            position: [-0.5, -0.5, -0.5],
+        },
+        Vertex {
+            position: [-0.5, -0.5, 0.5],
+        },
+        Vertex {
+            position: [-0.5, 0.5, 0.5],
+        },
+        Vertex {
+            position: [-0.5, -0.5, -0.5],
+        },
+        Vertex {
+            position: [-0.5, 0.5, 0.5],
+        },
+        Vertex {
+            position: [-0.5, 0.5, -0.5],
+        },
+        // Right face
+        Vertex {
+            position: [0.5, -0.5, -0.5],
+        },
+        Vertex {
+            position: [0.5, 0.5, 0.5],
+        },
+        Vertex {
+            position: [0.5, -0.5, 0.5],
+        },
+        Vertex {
+            position: [0.5, -0.5, -0.5],
+        },
+        Vertex {
+            position: [0.5, 0.5, -0.5],
+        },
+        Vertex {
+            position: [0.5, 0.5, 0.5],
         },
     ];
     let vertex_buffer = {
@@ -173,11 +224,16 @@ fn main() {
         CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices_2).unwrap()
     };
 
+    let test_rect = Rect {
+        min: cgmath::Vector2::new(-0.5, -0.5),
+        max: cgmath::Vector2::new(0.5, 0.5),
+    };
+
     let uniform_buffer = CpuBufferPool::<vs::ty::Data>::new(device.clone(), BufferUsage::all());
 
     let instances = {
-        let rows = 10;
-        let cols = 10;
+        let rows = 1;
+        let cols = 1;
         let n_instances = rows * cols;
         let mut data = Vec::new();
 
@@ -186,19 +242,25 @@ fn main() {
                 let half_cell_w = 0.5 / cols as f32;
                 let half_cell_h = 0.5 / rows as f32;
 
-                let x = half_cell_w + (c as f32 / cols as f32) * 2.0 - 1.0;
-                let y = half_cell_h + (r as f32 / rows as f32) * 2.0 - 1.0;
+                // let x = half_cell_w + (c as f32 / cols as f32) * 2.0 - 1.0;
+                // let y = half_cell_h + (r as f32 / rows as f32) * 2.0 - 1.0;
 
                 let n_i = c + r * cols;
 
-                let z = if n_i == 0 || n_i == n_instances - 1 {
-                    -0.1
-                } else {
-                    0.0
-                };
+                // let z = if n_i == 0 || n_i == n_instances - 1 {
+                //     -0.5
+                // } else {
+                //     0.0
+                // };
+                
+                let x = 0.0;
+                let y = 0.0;
+                let z = 0.0;
+
+                println!("{}, {}", x, z);
 
                 let position_offset = [x, y, z];
-                let scale = 0.5;
+                let scale = 1.0;
 
                 data.push(InstanceData {
                     position_offset,
@@ -247,7 +309,7 @@ fn main() {
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .rasterization_state(RasterizationState::new().front_face(FrontFace::Clockwise))
+        .rasterization_state(RasterizationState::new().front_face(FrontFace::Clockwise).cull_mode(CullMode::Back))
         .fragment_shader(fs.entry_point("main").unwrap(), ())
         .depth_stencil_state(DepthStencilState::simple_depth_test())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
@@ -262,6 +324,7 @@ fn main() {
         target: cgmath::Vector3::new(0.0, 0.0, 0.0),
         up: cgmath::Vector3::unit_y(),
     };
+    let mut camera_rotation = cgmath::Vector2::new(0.0, 0.0);
 
     let mut state = State {
         input_handler: Input::new(),
@@ -293,7 +356,18 @@ fn main() {
                         button, .. 
                     } => match button {
                         MouseButton::Left => {
-                            is_focused = set_locked_cursor(surface.window(), true);
+                            if is_focused {
+                                let ray_pos = camera.pos;
+                                let ray_dir = camera.get_forward(true);
+                                let ray = Ray {
+                                    start: cgmath::Vector2::new(ray_pos.x, ray_pos.z),
+                                    dir: cgmath::Vector2::new(ray_dir.x, ray_dir.z),
+                                };
+
+                                println!("Hit? {}", ray.intersects(&test_rect));
+                            } else {
+                                is_focused = set_locked_cursor(surface.window(), true);
+                            }
                         }
                         _ => (),
                     },
@@ -303,8 +377,11 @@ fn main() {
             Event::DeviceEvent { event, .. } => match event {
                 DeviceEvent::MouseMotion { delta } => {
                     if is_focused {
-                        camera.rotate_y(cgmath::Deg(delta.0 as f32 / 5.0));
-                        camera.rotate_x(-cgmath::Deg(delta.1 as f32 / 5.0));
+                        camera_rotation.x -= delta.1 as f32 / 5.0;
+                        camera_rotation.y += delta.0 as f32 / 5.0;
+                        camera.reset_rotation();
+                        camera.rotate_x(cgmath::Deg(camera_rotation.x));
+                        camera.rotate_y(cgmath::Deg(camera_rotation.y));
                     }
                 }
                 _ => (),
@@ -441,7 +518,7 @@ fn main() {
                     // Test 2nd draw call.
                     .bind_vertex_buffers(0, (vertex_buffer_2.clone(), instance_buffer.clone()))
                     .draw(
-                        vertex_buffer.len() as u32,
+                        vertex_buffer_2.len() as u32,
                         instance_buffer.len() as u32,
                         0,
                         0,

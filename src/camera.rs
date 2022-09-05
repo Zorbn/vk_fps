@@ -32,36 +32,38 @@ impl Camera {
     }
 
     pub fn move_forward(&mut self, delta: f32, flatten: bool) {
-        let forward = (self.target - self.pos).normalize();
-        let delta_vec = {
-            let mut vec = forward * delta;
-
-            if flatten {
-                vec.y = 0.0;
-            }
-
-            vec
-        };
-
-        self.pos += delta_vec;
-        self.target += delta_vec;
+        let delta_vec = self.get_forward(flatten) * delta;
+        self.pan(delta_vec);
     }
 
     pub fn move_right(&mut self, delta: f32, flatten: bool) {
+        let delta_vec = self.get_right(flatten) * delta;
+        self.pan(delta_vec);
+    }
+
+    pub fn get_right(&self, flatten: bool) -> cgmath::Vector3<f32> {
+        let forward = self.get_forward(flatten);
+
+        cgmath::Vector3::new(forward.z, forward.y, -forward.x)
+    }
+
+    pub fn get_forward(&self, flatten: bool) -> cgmath::Vector3<f32> {
         let forward = (self.target - self.pos).normalize();
-        let right = cgmath::Vector3::new(forward.z, forward.y, -forward.x);
-        let delta_vec = {
-            let mut vec = right * delta;
 
-            if flatten {
-                vec.y = 0.0;
-            }
+        if flatten {
+            cgmath::Vector3::new(forward.x, 0.0, forward.z)
+        } else {
+            forward
+        }
+    }
 
-            vec
-        };
+    pub fn pan(&mut self, delta: cgmath::Vector3<f32>) {
+        self.pos += delta;
+        self.target += delta;
+    }
 
-        self.pos += delta_vec;
-        self.target += delta_vec;
+    pub fn reset_rotation(&mut self) {
+        self.target = self.pos + cgmath::Vector3::<f32>::unit_z();
     }
 
     pub fn rotate_y(&mut self, delta: cgmath::Deg<f32>) {
