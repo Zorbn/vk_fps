@@ -1,5 +1,11 @@
 ## Todo:
 - Billboard sprite characters.
-- Wall: Planes? Voxels?
-- UI: Sprite fonts.
-- Attacks: Raycasting.
+  - Req: [x] Instanced planes.
+  - Req: Sprite loading.
+  - Req: Rotate to face camera.
+- Wall:
+  - Req: Voxels
+- UI:
+  - Req: Sprite fonts
+- Attacks:
+  - Req: [x] Raycasting

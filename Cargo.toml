@@ -14,3 +14,7 @@ cgmath = "0.18"
 [dependencies.bytemuck]
 version = "1.12"
 features = ["derive"]
+
+[dependencies.image]
+version = "0.24"
+features = ["png", "jpeg"]
