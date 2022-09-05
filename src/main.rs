@@ -311,7 +311,7 @@ fn main() {
     )
     .unwrap();
 
-    let (texture, tex_future) = {
+    let texture = {
         let png_bytes = include_bytes!("test.png");
         let img = image::load_from_memory(png_bytes).expect("Couldn't load image from bytes");
         let rgba = img.to_rgba8();
@@ -332,7 +332,10 @@ fn main() {
         )
         .unwrap();
 
-        (ImageView::new_default(image).unwrap(), future)
+        let tex_fence = Arc::new(future.then_signal_fence());
+        tex_fence.wait(None).unwrap();
+
+        ImageView::new_default(image).unwrap()
     };
 
     let sampler = Sampler::new(
@@ -391,13 +394,9 @@ fn main() {
         window_size_dependent_setup(device.clone(), &images, render_pass.clone(), &mut viewport);
     let mut recreate_swapchain = false;
 
-    // let frames_in_flight = images.len();
-    // let mut fences: Vec<Option<Arc<FenceSignalFuture<_>>>> = vec![None; frames_in_flight];
-    // let mut previous_fence_num = 0;
-
-    // let mut previous_future = Some(tex_future.boxed());
-    
-    let mut previous_frame_end = Some(tex_future.boxed());
+    let frames_in_flight = images.len();
+    let mut fences: Vec<Option<Arc<FenceSignalFuture<_>>>> = vec![None; frames_in_flight];
+    let mut previous_fence_num = 0;
 
     event_loop.run(move |event, _, control_flow| {
         match event {
@@ -478,8 +477,6 @@ fn main() {
                 if dimensions.width == 0 || dimensions.height == 0 {
                     return;
                 }
-
-                previous_frame_end.as_mut().unwrap().cleanup_finished();
 
                 if recreate_swapchain {
                     let (new_swapchain, new_images) =
@@ -586,57 +583,40 @@ fn main() {
                     .unwrap();
                 let command_buffer = builder.build().unwrap();
 
-                // if let Some(image_fence) = &fences[image_num] {
-                //     image_fence.wait(None).unwrap();
-                // }
+                if let Some(image_fence) = &fences[image_num] {
+                    image_fence.wait(None).unwrap();
+                }
 
-                let future = previous_frame_end
-                    .take()
-                    .unwrap()
+                let previous_future = match fences[previous_fence_num].clone() {
+                    None => {
+                        let mut now = sync::now(device.clone());
+                        now.cleanup_finished();
+
+                        now.boxed()
+                    }
+                    Some(fence) => fence.boxed(),
+                };
+
+                let future = previous_future
                     .join(acquire_future)
                     .then_execute(queue.clone(), command_buffer)
                     .unwrap()
                     .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
                     .then_signal_fence_and_flush();
 
-                match future {
-                    Ok(future) => {
-                        previous_frame_end = Some(future.boxed());
-                    }
+                fences[image_num] = match future {
+                    Ok(value) => Some(Arc::new(value)),
                     Err(FlushError::OutOfDate) => {
                         recreate_swapchain = true;
-                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                        None
                     }
                     Err(e) => {
                         println!("Failed to flush future: {:?}", e);
-                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                        None
                     }
-                }
+                };
 
-                // previous_future = match fences[previous_fence_num].clone() {
-                //     None => {
-                //         let mut now = sync::now(device.clone());
-                //         now.cleanup_finished();
-
-                //         Some(now.boxed())
-                //     }
-                //     Some(fence) => Some(fence.boxed()),
-                // };
-
-
-                // fences[image_num] = match future {
-                //     Ok(value) => Some(Arc::new(value)),
-                //     Err(FlushError::OutOfDate) => {
-                //         recreate_swapchain = true;
-                //         None
-                //     }
-                //     Err(e) => {
-                //         println!("Failed to flush future: {:?}", e);
-                //         None
-                //     }
-                // };
-
-                // previous_fence_num = image_num;
+                previous_fence_num = image_num;
             }
             _ => (),
         }
