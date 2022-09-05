@@ -7,7 +7,7 @@ mod state;
 use bytemuck::{Pod, Zeroable};
 use cgmath::prelude::*;
 use image;
-use std::sync::Arc;
+use std::{sync::Arc, ops::DerefMut};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess},
     command_buffer::{
@@ -285,6 +285,18 @@ fn main() {
         CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, instances)
             .unwrap();
 
+    // Example of updating instance data.
+    // Instance count could be stored in a variable and the used at draw call.
+    // Rotation could be passed as instance data (yrot matrix) for billboarding.
+    // {
+    //     let mut lock = instance_buffer.write().unwrap();
+    //     let mut data = lock.deref_mut();
+    //     data[0] = InstanceData {
+    //         position_offset: [0.0, -1.0, 0.0],
+    //         scale: 0.5,
+    //     };
+    // }
+
     let vs = vs::load(device.clone()).unwrap();
     let fs = fs::load(device.clone()).unwrap();
 
@@ -502,10 +514,12 @@ fn main() {
                 let uniform_buffer_subbuffer = {
                     let view_size = swapchain.image_extent();
                     let aspect = view_size[0] as f32 / view_size[1] as f32;
-                    let view_proj = camera.build_view_projection_matrix(aspect);
+                    let view = camera.build_view_matrix();
+                    let proj = camera.build_projection_matrix(aspect);
 
                     let uniform_data = vs::ty::Data {
-                        view_proj: view_proj.into(),
+                        view: view.into(),
+                        proj: proj.into(),
                     };
 
                     uniform_buffer.next(uniform_data).unwrap()
@@ -692,14 +706,16 @@ mod vs {
             layout(location = 2) in float scale;
 
             layout(set = 0, binding = 0) uniform Data {
-                mat4 view_proj;
+                mat4 view;
+                mat4 proj;
             } uniforms;
 
             layout(location = 3) out float instanceId;
 
             void main() {
                 instanceId = gl_InstanceIndex;
-                gl_Position = uniforms.view_proj * vec4(position * scale + position_offset, 1.0);
+
+                gl_Position = uniforms.proj * uniforms.view * vec4(position * scale + position_offset, 1.0);
                 tex_coords = vec2(position.x, position.y) + vec2(0.5);
             }
         "

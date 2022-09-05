@@ -1,9 +1,14 @@
 ## Todo:
+- [x] Camera:
+  - [x] Req: Uniform buffers.
+  - [x] Req: Rotation.
+  - [x] Req: Movement in relative directions.
 - Billboard sprite characters.
   - Req: [x] Instanced planes.
-  - Req: Sprite loading.
+  - Req: [o] Sprite loading.
   - Req: Rotate to face camera.
-- Wall:
+- Walls:
+  - Req: Texture arrays.
   - Req: Voxels
 - UI:
   - Req: Sprite fonts

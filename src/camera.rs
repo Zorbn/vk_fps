@@ -18,17 +18,17 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn build_view_projection_matrix(&self, aspect: f32) -> cgmath::Matrix4<f32> {
-        let view = cgmath::Matrix4::look_at_rh(
+    pub fn build_view_matrix(&self) -> cgmath::Matrix4<f32> {
+        cgmath::Matrix4::look_at_rh(
             cgmath::Point3::<f32>::from_vec(self.pos),
             cgmath::Point3::<f32>::from_vec(self.target),
             self.up,
-        );
+        )
+    }
 
-        let proj = GL_TO_VK_MATRIX
-            * cgmath::perspective(cgmath::Deg(self.fov_y), aspect, self.z_near, self.z_far);
-
-        proj * view
+    pub fn build_projection_matrix(&self, aspect: f32) -> cgmath::Matrix4<f32> {
+        GL_TO_VK_MATRIX
+            * cgmath::perspective(cgmath::Deg(self.fov_y), aspect, self.z_near, self.z_far)
     }
 
     pub fn move_forward(&mut self, delta: f32, flatten: bool) {
