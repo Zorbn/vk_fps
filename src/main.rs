@@ -252,7 +252,7 @@ fn main() {
                 // } else {
                 //     0.0
                 // };
-                
+
                 let x = 0.0;
                 let y = 0.0;
                 let z = 0.0;
@@ -360,7 +360,7 @@ fn main() {
                                 let ray_pos = camera.pos;
                                 let ray_dir = camera.get_forward(true);
                                 let ray = Ray {
-                                    start: cgmath::Vector2::new(ray_pos.x, ray_pos.z),
+                                    pos: cgmath::Vector2::new(ray_pos.x, ray_pos.z),
                                     dir: cgmath::Vector2::new(ray_dir.x, ray_dir.z),
                                 };
 
